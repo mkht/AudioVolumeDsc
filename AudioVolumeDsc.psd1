@@ -14,7 +14,7 @@
     # CLRVersion = ''
     # ProcessorArchitecture = ''
     # RequiredModules      = @()
-    # RequiredAssemblies = @()
+    # RequiredAssemblies   = @('.\Libs\CoreAudio\netstandard2.0\CoreAudio.dll')
     # ScriptsToProcess = @()
     # TypesToProcess = @()
     # FormatsToProcess = @()

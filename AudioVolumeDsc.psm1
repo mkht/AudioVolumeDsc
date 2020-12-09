@@ -1,7 +1,5 @@
-﻿enum Ensure {
-    Absent
-    Present
-}
+﻿# using namespace CoreAudio
+# Add-Type -Path (Join-Path $PSScriptRoot '\Libs\CoreAudio\netstandard2.0\CoreAudio.dll')
 
 <#
    This resource manages audio volumes on the sound devices.
@@ -10,7 +8,9 @@
 
 [DscResource()]
 class AudioVolume {
+    # DSC Properties
     [DscProperty(Key)]
+    [ValidateNotNullOrEmpty()]
     [string]$DeviceName
 
     [DscProperty(Mandatory)]
@@ -30,14 +30,61 @@ class AudioVolume {
     [bool] $IsDefaultDevice
 
     [DscProperty(NotConfigurable)]
-    [bool] $DeviceId
+    [string] $DeviceId
 
-    <#
-        This method is equivalent of the Set-TargetResource script function.
-        It sets the resource to the desired state.
-    #>
-    [void] Set() {
+    # Private (Hidden) field
+    [CoreAudio.PROPERTYKEY] Hidden $PKEY_DEVICE_INTERFACE_FRIENDLY_NAME = [CoreAudio.PROPERTYKEY]::new([Guid]::new('026E516E-B814-414B-83CD-856D6FEF4822'), 2)
+    [CoreAudio.PROPERTYKEY] Hidden $PKEY_DEVICE_FRIENDLY_NAME = [CoreAudio.PROPERTYKEY]::new([Guid]::new('A45C254E-DF1C-4EFD-8020-67D146A850E0'), 14)
+    [CoreAudio.PROPERTYKEY] Hidden $PKEY_DEVICE_DESCRIPTION = [CoreAudio.PROPERTYKEY]::new([Guid]::new('A45C254E-DF1C-4EFD-8020-67D146A850E0'), 2)
+    [CoreAudio.PROPERTYKEY] Hidden $PKEY_SYSTEM_NAME = [CoreAudio.PROPERTYKEY]::new([Guid]::new('B3F8FA53-0004-438E-9003-51A46E139BFC'), 6)
 
+    [CoreAudio.MMDevice] Hidden $MMDevice
+
+    [AudioVolume] GetDevice([string]$DeviceName) {
+        Add-Type -Path (Join-Path $PSScriptRoot '\Libs\CoreAudio\netstandard2.0\CoreAudio.dll')
+
+        $result = [AudioVolume]::new()
+        $enum = [CoreAudio.MMDeviceEnumerator]::new()
+        $allDevices = $enum.EnumerateAudioEndPoints([CoreAudio.EDataFlow]::eRender, ([CoreAudio.DEVICE_STATE]::DEVICE_STATE_ACTIVE -bor [CoreAudio.DEVICE_STATE]::DEVICE_STATE_UNPLUGGED -bor [CoreAudio.DEVICE_STATE]::DEVICE_STATE_DISABLED))
+        foreach ($device in $allDevices) {
+            if ($device.Properties.Item($this.PKEY_DEVICE_FRIENDLY_NAME).Value -match $DeviceName) {
+                $result.MMDevice = $device
+                $result.DeviceName = $device.Properties.Item($this.PKEY_DEVICE_FRIENDLY_NAME).Value
+                $result.DeviceId = $device.ID
+                $result.State = $device.State
+                $result.IsDefaultDevice = $device.Selected
+                $result.Volume = [uint16]($device.AudioEndpointVolume.MasterVolumeLevelScalar * 100)
+                $result.Mute = $device.AudioEndpointVolume.Mute
+                return $result
+                break
+            }
+        }
+        return $null
+    }
+
+    [void] SetVolume([uint16] $Volume) {
+        if ($Volume -lt 0 -or $Volume -gt 100) {
+            throw [System.ArgumentOutOfRangeException]::new()
+            return
+        }
+
+        if ($null -eq $this.MMDevice) {
+            throw [System.InvalidOperationException]::new()
+            return
+        }
+
+        $this.MMDevice.AudioEndpointVolume.MasterVolumeLevelScalar = ($Volume / 100)
+        $this.Volume = $this.MMDevice.AudioEndpointVolume.MasterVolumeLevelScalar
+    }
+
+    [void] SetMute([bool] $Mute) {
+        if ($null -eq $this.MMDevice) {
+            throw [System.InvalidOperationException]::new()
+            return
+        }
+
+        $this.MMDevice.AudioEndpointVolume.Mute = $Mute
+        $this.Mute = $this.AudioEndpointVolume.Mute
     }
 
     <#
@@ -46,6 +93,35 @@ class AudioVolume {
         is in a desired state.
     #>
     [bool] Test() {
+        $CurrentState = $this.Get()
+        if ($null -eq $CurrentState) {
+            Write-Verbose ('Device not found')
+            if ($this.SkipWhenDeviceNotPresent) {
+                Write-Warning 'Device not found but TEST RETURNS TRUE because SkipWhenDeviceNotPresent is specified as true.'
+                return $true
+            }
+            else {
+                return $false
+            }
+        }
+
+        Write-Verbose ('Device Found: {0}' -f $CurrentState.DeviceName)
+        Write-Verbose ('Device ID: {0}' -f $CurrentState.DeviceId)
+        Write-Verbose ('Current State: {0}' -f $CurrentState.State.ToString())
+        Write-Verbose ('Current Volume: {0}' -f $CurrentState.Volume)
+        Write-Verbose ('Current Mute: {0}' -f $CurrentState.Mute)
+
+        if ($CurrentState.Mute -ne $this.Mute) {
+            Write-Verbose ('Mute state is not desited one. Test failed.')
+            return $false
+        }
+
+        if ($CurrentState.Volume -ne $this.Volume) {
+            Write-Verbose ('Volume is not desited value. Test failed.')
+            return $false
+        }
+
+        Write-Verbose 'All states are desired. Test passed.'
         return $true
     }
 
@@ -56,7 +132,42 @@ class AudioVolume {
          properties.
     #>
     [AudioVolume] Get() {
-        return $null
+        $CurrentState = $this.GetDevice($this.DeviceName)
+        return $CurrentState
+    }
+
+    <#
+        This method is equivalent of the Set-TargetResource script function.
+        It sets the resource to the desired state.
+    #>
+    [void] Set() {
+        $CurrentState = $this.Get()
+        if ($null -eq $CurrentState) {
+            Write-Verbose ('Device not found')
+            if (-not $this.SkipWhenDeviceNotPresent) {
+                Write-Error 'Device not found'
+                return
+            }
+        }
+
+        if ($CurrentState.State -ne [CoreAudio.DEVICE_STATE]::DEVICE_STATE_ACTIVE) {
+            Write-Error ('We can not change volume when the device is not Active. (Current State is {0})' -f $CurrentState.State)
+            return
+        }
+
+        try {
+            $CurrentState.SetVolume($this.Volume)
+            Write-Verbose ('Changed the volume to {0}' -f $CurrentState.Volume)
+            $CurrentState.SetMute($this.Mute)
+            Write-Verbose ('Changed the mute states to {0}' -f $CurrentState.Mute)
+        }
+        catch {
+            Write-Error -Exception $_.Exception
+            Write-Verbose 'Operation Failed.'
+            return
+        }
+
+        Write-Verbose 'Operation Completed.'
     }
 
 } # This module defines a class for a DSC "AudioVolume" provider.
