@@ -1,0 +1,11 @@
+[ClassVersion("1.0.0"),FriendlyName("AudioVolume")]
+class AudioVolume : OMI_BaseResource
+{
+  [Key] string DeviceName;
+  [required] uint32 Volume;
+  [write] boolean Mute;
+  [write] boolean SkipWhenDeviceNotPresent;
+  [read] string State;
+  [read] boolean IsDefaultDevice;
+  [read] string DeviceId;
+};
