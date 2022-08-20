@@ -2,11 +2,6 @@
 
 Add-Type -Path (Join-Path $LibsPath '\CoreAudio\netstandard2.0\CoreAudio.dll')
 
-[CoreAudio.PROPERTYKEY] $script:PKEY_DEVICE_INTERFACE_FRIENDLY_NAME = [CoreAudio.PROPERTYKEY]::new([Guid]::new('026E516E-B814-414B-83CD-856D6FEF4822'), 2)
-[CoreAudio.PROPERTYKEY] $script:PKEY_DEVICE_FRIENDLY_NAME = [CoreAudio.PROPERTYKEY]::new([Guid]::new('A45C254E-DF1C-4EFD-8020-67D146A850E0'), 14)
-[CoreAudio.PROPERTYKEY] $script:PKEY_DEVICE_DESCRIPTION = [CoreAudio.PROPERTYKEY]::new([Guid]::new('A45C254E-DF1C-4EFD-8020-67D146A850E0'), 2)
-[CoreAudio.PROPERTYKEY] $script:PKEY_SYSTEM_NAME = [CoreAudio.PROPERTYKEY]::new([Guid]::new('B3F8FA53-0004-438E-9003-51A46E139BFC'), 6)
-
 function Get-TargetResource {
     [CmdletBinding()]
     [OutputType([System.Collections.Hashtable])]
