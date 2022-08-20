@@ -33,13 +33,14 @@ function Get-TargetResource {
 
     foreach ($device in $MMDevice) {
         $result = @{}
-        $result.DeviceName = $device.Properties.Item($script:PKEY_DEVICE_FRIENDLY_NAME).Value
+        $result.DeviceName = $device.DeviceFriendlyName
         $result.DeviceId = $device.ID
         $result.State = $device.State.ToString()
         $result.IsDefaultDevice = $device.Selected
         $result.Volume = [uint16]($device.AudioEndpointVolume.MasterVolumeLevelScalar * 100)
         $result.Mute = $device.AudioEndpointVolume.Mute
         $result
+        $device.Dispose()
     }
 }
 
@@ -155,7 +156,7 @@ function Set-TargetResource {
     }
 
     foreach ($device in $MMDevice) {
-        Write-Verbose ('Target device: {0}' -f $device.Properties.Item($script:PKEY_DEVICE_FRIENDLY_NAME).Value)
+        Write-Verbose ('Target device: {0}' -f $device.DeviceFriendlyName)
         Write-Verbose ('Target device ID: {0}' -f $device.ID)
         Write-Verbose ('Target device State: {0}' -f $device.State.ToString())
         try {
@@ -168,6 +169,9 @@ function Set-TargetResource {
             Write-Error -Exception $_.Exception
             continue
         }
+        finally {
+            $device.Dispose()
+        }
     }
 
     Write-Verbose 'Operation Completed.'
@@ -176,7 +180,7 @@ function Set-TargetResource {
 function Get-MMDevice([string]$DeviceName) {
     $enum = [CoreAudio.MMDeviceEnumerator]::new()
     $allDevices = $enum.EnumerateAudioEndPoints([CoreAudio.EDataFlow]::eRender, ([CoreAudio.DEVICE_STATE]::DEVICE_STATE_ACTIVE -bor [CoreAudio.DEVICE_STATE]::DEVICE_STATE_UNPLUGGED -bor [CoreAudio.DEVICE_STATE]::DEVICE_STATE_DISABLED))
-    $allDevices | Where-Object { try { $_.Properties.Item($script:PKEY_DEVICE_FRIENDLY_NAME).Value -match $DeviceName }catch {} }
+    $allDevices | Where-Object { $_.DeviceFriendlyName -match $DeviceName }
 }
 
 Export-ModuleMember -function *-TargetResource
