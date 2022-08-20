@@ -1,5 +1,5 @@
 ﻿@{
-    ModuleVersion        = '1.0.0'
+    ModuleVersion        = '2.0.0'
     GUID                 = '31b46ae0-64e9-4801-867b-52a5923f3824'
     Author               = 'mkht'
     CompanyName          = ''
@@ -13,7 +13,7 @@
     PrivateData          = @{
         PSData = @{
             # Tags applied to this module. These help with module discovery in online galleries.
-            Tags         = 'DesiredStateConfiguration', 'DSC', 'DSCResource'
+            Tags         = 'Audio' , 'Volume', 'DesiredStateConfiguration', 'DSC', 'DSCResource'
             # A URL to the license for this module.
             LicenseUri   = 'https://github.com/mkht/AudioVolumeDsc/blob/master/LICENSE'
             # A URL to the main website for this project.
