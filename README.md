@@ -18,7 +18,7 @@ PowerShell DSC Resource to control audio volume.
 + [string] **DeviceName** (Key):
     + The name of the audio device.
     + You can use regular expression.
-    + If more than one device is found, only the first device will be set.
+    + If more than one devices found, all devices are targeted for configuration.
 
 + [int] **Volume** (Required):
     + The target volume. (0 to 100)
@@ -57,5 +57,9 @@ Configuration Example1
 > Licensed under the [MIT License](https://github.com/morphx666/CoreAudio/blob/1c6cadb5030b9d4323ce8f47e5420d6a8e035a51/LICENSE).
 
 ## ChangeLog
+### v2.0.0
+ - if multiple devices with the same name are found, all devices are targeted for configuration.
+ - Devices in an inactive state are also targeted for configuration.
+
 ### v1.0.0
  - First public release.

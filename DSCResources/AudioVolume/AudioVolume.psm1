@@ -23,20 +23,24 @@ function Get-TargetResource {
 
     $MMDevice = Get-MMDevice -DeviceName $DeviceName
 
-    if ($null -eq $MMDevice) {
-        Write-Verbose ('Device not found')
+    if ($MMDevice.Count -eq 0) {
+        Write-Verbose ('Device not found.')
         return $null
     }
+    elseif ($MMDevice.Count -gt 1) {
+        Write-Warning ('Multiple audio devices found.')
+    }
 
-    $result = @{}
-    $result.DeviceName = $MMDevice.Properties.Item($script:PKEY_DEVICE_FRIENDLY_NAME).Value
-    $result.DeviceId = $MMDevice.ID
-    $result.State = $MMDevice.State.ToString()
-    $result.IsDefaultDevice = $MMDevice.Selected
-    $result.Volume = [uint16]($MMDevice.AudioEndpointVolume.MasterVolumeLevelScalar * 100)
-    $result.Mute = $MMDevice.AudioEndpointVolume.Mute
-
-    return $result
+    foreach ($device in $MMDevice) {
+        $result = @{}
+        $result.DeviceName = $device.Properties.Item($script:PKEY_DEVICE_FRIENDLY_NAME).Value
+        $result.DeviceId = $device.ID
+        $result.State = $device.State.ToString()
+        $result.IsDefaultDevice = $device.Selected
+        $result.Volume = [uint16]($device.AudioEndpointVolume.MasterVolumeLevelScalar * 100)
+        $result.Mute = $device.AudioEndpointVolume.Mute
+        $result
+    }
 }
 
 function Test-TargetResource {
@@ -81,24 +85,35 @@ function Test-TargetResource {
         }
     }
 
-    Write-Verbose ('Device Found: {0}' -f $CurrentState.DeviceName)
-    Write-Verbose ('Device ID: {0}' -f $CurrentState.DeviceId)
-    Write-Verbose ('Current State: {0}' -f $CurrentState.State)
-    Write-Verbose ('Current Volume: {0}' -f $CurrentState.Volume)
-    Write-Verbose ('Current Mute: {0}' -f $CurrentState.Mute)
+    $ret = $true
+    foreach ($item in $CurrentState) {
+        Write-Verbose ('Device Found: {0}' -f $item.DeviceName)
+        Write-Verbose ('Device ID: {0}' -f $item.DeviceId)
+        Write-Verbose ('Current State: {0}' -f $item.State)
+        Write-Verbose ('Current Volume: {0}' -f $item.Volume)
+        Write-Verbose ('Current Mute: {0}' -f $item.Mute)
 
-    if ($CurrentState.Mute -ne $Mute) {
-        Write-Verbose ('Mute state is not desited one. Test failed.')
-        return $false
+        if ($item.Mute -ne $Mute) {
+            Write-Verbose ('The Mute state is not desired one. Test failed.')
+            $ret = $false
+        }
+        else {
+            Write-Verbose ('The Mute state is desired one. Test passed.')
+        }
+
+        if ($item.Volume -ne $Volume) {
+            Write-Verbose ('The Volume is not desired value. Test failed.')
+            $ret = $false
+        }
+        else {
+            Write-Verbose ('The Volume is desired value. Test passed.')
+        }
     }
 
-    if ($CurrentState.Volume -ne $Volume) {
-        Write-Verbose ('Volume is not desited value. Test failed.')
-        return $false
+    if ($ret) {
+        Write-Verbose 'All states are desired. Test passed.'
     }
-
-    Write-Verbose 'All states are desired. Test passed.'
-    return $true
+    return $ret
 }
 
 function Set-TargetResource {
@@ -131,7 +146,7 @@ function Set-TargetResource {
     )
 
     $MMDevice = Get-MMDevice -DeviceName $DeviceName
-    if ($null -eq $MMDevice) {
+    if ($MMDevice.Count -eq 0) {
         Write-Verbose ('Device not found')
         if (-not $SkipWhenDeviceNotPresent) {
             Write-Error 'Device not found'
@@ -139,21 +154,20 @@ function Set-TargetResource {
         }
     }
 
-    if ($MMDevice.State -ne [CoreAudio.DEVICE_STATE]::DEVICE_STATE_ACTIVE) {
-        Write-Error ('We can not change volume when the device is not Active. (Current State is {0})' -f $MMDevice.State.ToString())
-        return
-    }
-
-    try {
-        $MMDevice.AudioEndpointVolume.MasterVolumeLevelScalar = ($Volume / 100)
-        Write-Verbose ('Changed the volume to {0}' -f [int]($MMDevice.AudioEndpointVolume.MasterVolumeLevelScalar * 100))
-        $MMDevice.AudioEndpointVolume.Mute = $Mute
-        Write-Verbose ('Changed the mute states to {0}' -f $MMDevice.AudioEndpointVolume.Mute)
-    }
-    catch {
-        Write-Error -Exception $_.Exception
-        Write-Verbose 'Operation Failed.'
-        return
+    foreach ($device in $MMDevice) {
+        Write-Verbose ('Target device: {0}' -f $device.Properties.Item($script:PKEY_DEVICE_FRIENDLY_NAME).Value)
+        Write-Verbose ('Target device ID: {0}' -f $device.ID)
+        Write-Verbose ('Target device State: {0}' -f $device.State.ToString())
+        try {
+            $device.AudioEndpointVolume.MasterVolumeLevelScalar = ($Volume / 100)
+            Write-Verbose ('Changed the volume to {0}' -f [int]($device.AudioEndpointVolume.MasterVolumeLevelScalar * 100))
+            $device.AudioEndpointVolume.Mute = $Mute
+            Write-Verbose ('Changed the mute states to {0}' -f $device.AudioEndpointVolume.Mute)
+        }
+        catch {
+            Write-Error -Exception $_.Exception
+            continue
+        }
     }
 
     Write-Verbose 'Operation Completed.'
@@ -162,13 +176,7 @@ function Set-TargetResource {
 function Get-MMDevice([string]$DeviceName) {
     $enum = [CoreAudio.MMDeviceEnumerator]::new()
     $allDevices = $enum.EnumerateAudioEndPoints([CoreAudio.EDataFlow]::eRender, ([CoreAudio.DEVICE_STATE]::DEVICE_STATE_ACTIVE -bor [CoreAudio.DEVICE_STATE]::DEVICE_STATE_UNPLUGGED -bor [CoreAudio.DEVICE_STATE]::DEVICE_STATE_DISABLED))
-    foreach ($device in $allDevices) {
-        if ($device.Properties.Item($script:PKEY_DEVICE_FRIENDLY_NAME).Value -match $DeviceName) {
-            return $device
-            break
-        }
-    }
-    return $null
+    $allDevices | Where-Object { try { $_.Properties.Item($script:PKEY_DEVICE_FRIENDLY_NAME).Value -match $DeviceName }catch {} }
 }
 
 Export-ModuleMember -function *-TargetResource
